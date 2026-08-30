@@ -1,5 +1,11 @@
 use super::model::{HostPattern, PathPattern, Policy};
 
+struct Rule<'a> {
+    action: &'a str,
+    kind: &'a str,
+    values: &'a str,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
     pub line: usize,
@@ -22,13 +28,27 @@ enum Section {
     Network,
 }
 
-fn parse_values<'a>(
-    parts: impl Iterator<Item = &'a str>,
-    line_number: usize,
-    error: &str,
-) -> Result<Vec<String>, ParseError> {
-    let values = parts.collect::<Vec<_>>().join(" ");
+fn parse_rule<'a>(line: &'a str, line_number: usize) -> Result<Rule<'a>, ParseError> {
+    let mut parts = line.splitn(3, char::is_whitespace);
 
+    let action = parts
+        .next()
+        .ok_or_else(|| ParseError::new(line_number, "missing action"))?;
+
+    let kind = parts
+        .next()
+        .ok_or_else(|| ParseError::new(line_number, "missing rule"))?;
+
+    let values = parts.next().unwrap_or("").trim();
+
+    Ok(Rule {
+        action,
+        kind,
+        values,
+    })
+}
+
+fn parse_values(values: &str, line_number: usize, error: &str) -> Result<Vec<String>, ParseError> {
     let values = values
         .split(',')
         .map(str::trim)
@@ -48,40 +68,32 @@ fn parse_filesystem_rule(
     policy: &mut Policy,
     line_number: usize,
 ) -> Result<(), ParseError> {
-    let mut parts = line.split_whitespace();
+    let rule = parse_rule(line, line_number)?;
 
-    let action = parts
-        .next()
-        .ok_or_else(|| ParseError::new(line_number, "missing action"))?;
+    let values = parse_values(rule.values, line_number, "missing filesystem path")?;
 
-    let operation = parts
-        .next()
-        .ok_or_else(|| ParseError::new(line_number, "missing filesystem operation"))?;
-
-    let values = parse_values(parts, line_number, "missing filesystem path")?;
-
-    let rules = match action {
+    let rules = match rule.action {
         "allow" => &mut policy.filesystem.allow,
         "ask" => &mut policy.filesystem.ask,
         "deny" => &mut policy.filesystem.deny,
         _ => {
             return Err(ParseError::new(
                 line_number,
-                format!("unknown action: {action}"),
+                format!("unknown action: {}", rule.action),
             ));
         }
     };
 
     let patterns = values.into_iter().map(PathPattern).collect::<Vec<_>>();
 
-    match operation {
+    match rule.kind {
         "read" => rules.read.extend(patterns),
         "write" => rules.write.extend(patterns),
         "delete" => rules.delete.extend(patterns),
         _ => {
             return Err(ParseError::new(
                 line_number,
-                format!("unknown filesystem operation: {operation}"),
+                format!("unknown filesystem operation: {}", rule.kind),
             ));
         }
     }
@@ -94,53 +106,47 @@ fn parse_process_rule(
     policy: &mut Policy,
     line_number: usize,
 ) -> Result<(), ParseError> {
-    let mut parts = line.split_whitespace();
+    let rule = parse_rule(line, line_number)?;
 
-    let action = parts
-        .next()
-        .ok_or_else(|| ParseError::new(line_number, "missing action"))?;
+    match rule.kind {
+        "scope" => {
+            if rule.action != "allow" {
+                return Err(ParseError::new(line_number, "scope can only use allow"));
+            }
 
-    let rule = parts
-        .next()
-        .ok_or_else(|| ParseError::new(line_number, "missing process rule"))?;
+            let scopes = parse_values(rule.values, line_number, "missing process scope")?;
 
-    if rule == "scope" {
-        if action != "allow" {
-            return Err(ParseError::new(line_number, "scope can only use allow"));
+            policy
+                .process
+                .scope
+                .extend(scopes.into_iter().map(PathPattern));
         }
 
-        let scopes = parse_values(parts, line_number, "missing process scope")?;
+        "command" => {
+            let commands = parse_values(rule.values, line_number, "missing process command")?;
 
-        policy
-            .process
-            .scope
-            .extend(scopes.into_iter().map(PathPattern));
+            let rules = match rule.action {
+                "allow" => &mut policy.process.allow,
+                "ask" => &mut policy.process.ask,
+                "deny" => &mut policy.process.deny,
+                _ => {
+                    return Err(ParseError::new(
+                        line_number,
+                        format!("unknown process action: {}", rule.action),
+                    ));
+                }
+            };
 
-        return Ok(());
-    }
+            rules.extend(commands);
+        }
 
-    if rule != "command" {
-        return Err(ParseError::new(
-            line_number,
-            format!("unknown process rule: {rule}"),
-        ));
-    }
-
-    let commands = parse_values(parts, line_number, "missing process command")?;
-
-    let rules = match action {
-        "allow" => &mut policy.process.allow,
-        "ask" => &mut policy.process.ask,
-        "deny" => &mut policy.process.deny,
         _ => {
             return Err(ParseError::new(
                 line_number,
-                format!("unknown process action: {action}"),
+                format!("unknown process rule: {}", rule.kind),
             ));
         }
-    };
-
-    rules.extend(commands);
+    }
 
     Ok(())
 }
@@ -150,38 +156,34 @@ fn parse_network_rule(
     policy: &mut Policy,
     line_number: usize,
 ) -> Result<(), ParseError> {
-    let mut parts = line.split_whitespace();
+    let rule = parse_rule(line, line_number)?;
 
-    let action = parts
-        .next()
-        .ok_or_else(|| ParseError::new(line_number, "missing action"))?;
+    match rule.kind {
+        "host" => {
+            let hosts = parse_values(rule.values, line_number, "missing network host")?;
 
-    let rule = parts
-        .next()
-        .ok_or_else(|| ParseError::new(line_number, "missing network rule"))?;
+            let rules = match rule.action {
+                "allow" => &mut policy.network.allow,
+                "ask" => &mut policy.network.ask,
+                "deny" => &mut policy.network.deny,
+                _ => {
+                    return Err(ParseError::new(
+                        line_number,
+                        format!("unknown network action: {}", rule.action),
+                    ));
+                }
+            };
 
-    if rule != "host" {
-        return Err(ParseError::new(
-            line_number,
-            format!("unknown network rule: {rule}"),
-        ));
-    }
+            rules.extend(hosts.into_iter().map(HostPattern));
+        }
 
-    let hosts = parse_values(parts, line_number, "missing network host")?;
-
-    let rules = match action {
-        "allow" => &mut policy.network.allow,
-        "ask" => &mut policy.network.ask,
-        "deny" => &mut policy.network.deny,
         _ => {
             return Err(ParseError::new(
                 line_number,
-                format!("unknown network action: {action}"),
+                format!("unknown network rule: {}", rule.action),
             ));
         }
-    };
-
-    rules.extend(hosts.into_iter().map(HostPattern));
+    }
 
     Ok(())
 }
