@@ -4,7 +4,5 @@ pub mod model;
 pub mod parser;
 pub mod path;
 
-pub use model::{
-    FilesystemPolicy, FilesystemRules, HostPattern, NetworkPolicy, PathPattern, Policy,
-    ProcessPolicy,
-};
+pub use model::*;
+pub use parser::*;

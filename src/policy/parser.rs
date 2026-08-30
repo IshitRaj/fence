@@ -70,8 +70,6 @@ fn parse_filesystem_rule(
 ) -> Result<(), ParseError> {
     let rule = parse_rule(line, line_number)?;
 
-    let values = parse_values(rule.values, line_number, "missing filesystem path")?;
-
     let rules = match rule.action {
         "allow" => &mut policy.filesystem.allow,
         "ask" => &mut policy.filesystem.ask,
@@ -84,6 +82,7 @@ fn parse_filesystem_rule(
         }
     };
 
+    let values = parse_values(rule.values, line_number, "missing filesystem path")?;
     let patterns = values.into_iter().map(PathPattern).collect::<Vec<_>>();
 
     match rule.kind {
