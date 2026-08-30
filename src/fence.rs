@@ -47,6 +47,16 @@ impl Fence {
             Decision::Deny => Err(FenceOperationError::Denied),
         }
     }
+
+    pub fn delete(&self, path: impl AsRef<std::path::Path>) -> Result<(), FenceOperationError> {
+        let request = FenceRequest::filesystem(Operation::Delete, path.as_ref());
+
+        match self.check(&request) {
+            Decision::Allow => std::fs::remove_file(path).map_err(FenceOperationError::Io),
+            Decision::Ask => Err(FenceOperationError::Ask),
+            Decision::Deny => Err(FenceOperationError::Denied),
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -409,3 +409,117 @@ fn write_returns_io_error_when_parent_does_not_exist() {
 
     fs::remove_file(policy_path).unwrap();
 }
+
+#[test]
+fn delete_allows_allowed_path() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-delete-test.txt");
+
+    fs::write(&file_path, "delete me").unwrap();
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow delete {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    fence.delete(&file_path).unwrap();
+
+    assert!(!file_path.exists());
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn delete_denies_disallowed_path() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-delete-denied.txt");
+
+    fs::write(&file_path, "keep me").unwrap();
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            deny delete {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.delete(&file_path);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+    assert!(file_path.exists());
+
+    fs::remove_file(policy_path).unwrap();
+    fs::remove_file(file_path).unwrap();
+}
+
+#[test]
+fn delete_returns_ask_for_ask_rule() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-delete-ask.txt");
+
+    fs::write(&file_path, "keep me").unwrap();
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask delete {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.delete(&file_path);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+    assert!(file_path.exists());
+
+    fs::remove_file(policy_path).unwrap();
+    fs::remove_file(file_path).unwrap();
+}
+
+#[test]
+fn delete_returns_io_error_when_file_does_not_exist() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-delete-missing.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow delete {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.delete(&file_path);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Io(_))));
+
+    fs::remove_file(policy_path).unwrap();
+}
