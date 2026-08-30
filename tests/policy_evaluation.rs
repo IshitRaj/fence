@@ -159,4 +159,133 @@ mod tests {
 
         assert_eq!(policy.evaluate(&request), Decision::Deny);
     }
+
+    #[test]
+    fn allowed_process_returns_allow() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                allow: vec!["cargo".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Allow);
+    }
+
+    #[test]
+    fn unknown_process_returns_deny() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                allow: vec!["cargo".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("python", ["script.py"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn denied_process_returns_deny() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                deny: vec!["bash".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("bash", [""], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn ask_process_returns_ask() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                ask: vec!["rm".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("rm", ["file.txt"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Ask);
+    }
+
+    #[test]
+    fn process_outside_scope_returns_deny() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                allow: vec!["cargo".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("cargo", ["test"], "/tmp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn denied_process_overrides_allowed_process() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                allow: vec!["cargo".into()],
+                deny: vec!["cargo".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn asked_process_overrides_allowed_process() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                allow: vec!["cargo".into()],
+                ask: vec!["cargo".into()],
+                scope: vec![PathPattern("/projects/**".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Ask);
+    }
+
+    #[test]
+    fn empty_scope_denies_process() {
+        let policy = Policy {
+            process: ProcessPolicy {
+                allow: vec!["cargo".into()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
 }

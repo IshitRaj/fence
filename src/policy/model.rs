@@ -23,7 +23,7 @@ pub struct ProcessPolicy {
     pub allow: Vec<String>,
     pub ask: Vec<String>,
     pub deny: Vec<String>,
-    pub scope: Option<PathPattern>,
+    pub scope: Vec<PathPattern>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

@@ -48,13 +48,17 @@ impl FenceRequest {
         }
     }
 
-    pub fn process(command: impl Into<String>, args: Vec<String>, cwd: impl Into<PathBuf>) -> Self {
+    pub fn process<I, S>(command: impl Into<String>, args: I, cwd: impl Into<PathBuf>) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
         Self {
             resource: Resource::Process,
             operation: Operation::Execute,
             target: Target::Process {
                 command: command.into(),
-                args,
+                args: args.into_iter().map(Into::into).collect(),
                 cwd: cwd.into(),
             },
         }

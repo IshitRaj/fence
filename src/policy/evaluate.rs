@@ -46,6 +46,34 @@ impl Policy {
                 &self.filesystem.allow.delete,
             ),
 
+            (
+                Resource::Process,
+                Operation::Execute,
+                Target::Process {
+                    command,
+                    args: _,
+                    cwd,
+                },
+            ) => {
+                if !self.process.scope.iter().any(|scope| scope.matches(cwd)) {
+                    return Decision::Deny;
+                }
+
+                if self.process.deny.iter().any(|cmd| cmd == command) {
+                    return Decision::Deny;
+                }
+
+                if self.process.ask.iter().any(|cmd| cmd == command) {
+                    return Decision::Ask;
+                }
+
+                if self.process.allow.iter().any(|cmd| cmd == command) {
+                    return Decision::Allow;
+                }
+
+                Decision::Deny
+            }
+
             _ => Decision::Deny,
         }
     }
