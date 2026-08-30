@@ -1,31 +1,56 @@
-use fence::Fence;
-use std::fs;
+//! Minimal end-to-end demo of Fence: load a policy, wire up an approval
+//! handler for anything marked `ask`, then read, write, and delete a file,
+//! logging whatever the policy decides rather than crashing on it.
+//!
+//! Run with: cargo run --example playground
+
+use fence::{ApprovalDecision, Fence};
+use std::io::{self, Write};
 
 fn main() {
-    let file = "examples/playground/test.txt";
+    let file = "playground/test.txt";
 
-    let fence = Fence::load("examples/playground.fence").expect("failed to load playground policy");
-    println!("Fence playground loaded successfully.");
+    let fence = Fence::load("examples/playground.fence")
+        .expect("failed to load fence policy")
+        .with_approval_handler(prompt_for_approval);
 
-    // Read
-    let content = fence.read(file).expect("read was denied or failed");
-    println!("Read: {}", String::from_utf8_lossy(&content));
+    println!("Fence playground loaded successfully.\n");
 
-    // Write
-    fence
-        .write(file, "Hello from Fence!")
-        .expect("write was denied or failed");
-    println!("Write succeeded.");
+    match fence.read(file) {
+        Ok(content) => println!("[read] succeeded -> {}", String::from_utf8_lossy(&content)),
+        Err(err) => println!("[read] {err}"),
+    }
 
-    // Read again
-    let content = fence.read(file).expect("read was denied or failed");
-    println!("Read after write: {}", String::from_utf8_lossy(&content));
+    match fence.write(file, "Hello from Fence!") {
+        Ok(()) => println!("[write] succeeded"),
+        Err(err) => println!("[write] {err}"),
+    }
 
-    // Delete
-    fence.delete(file).expect("delete was denied or failed");
-    println!("Delete succeeded.");
+    match fence.read(file) {
+        Ok(content) => println!(
+            "[read after write] succeeded -> {}",
+            String::from_utf8_lossy(&content)
+        ),
+        Err(err) => println!("[read after write] {err}"),
+    }
 
-    // Verify the file is actually gone.
-    assert!(!fs::exists(file).expect("failed to check file existence"));
-    println!("File successfully deleted. Create/write test.txt again before the next run.");
+    match fence.delete(file) {
+        Ok(()) => println!("[delete] succeeded"),
+        Err(err) => println!("[delete] {err}"),
+    }
+}
+
+/// Prompts in the terminal whenever a policy rule is marked `ask`.
+fn prompt_for_approval(request: &fence::FenceRequest) -> ApprovalDecision {
+    print!("Approve: {request}? [y/N] ");
+    io::stdout().flush().ok();
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).ok();
+
+    if input.trim().eq_ignore_ascii_case("y") {
+        ApprovalDecision::Approved
+    } else {
+        ApprovalDecision::Denied
+    }
 }

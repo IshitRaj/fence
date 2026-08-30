@@ -266,7 +266,7 @@ fn read_returns_ask_for_ask_rule() {
     let fence = Fence::load(&policy_path).unwrap();
     let result = fence.read(&file_path);
 
-    assert!(matches!(result, Err(FenceOperationError::Ask)));
+    assert!(matches!(result, Err(FenceOperationError::Ask(_))));
 
     let _ = fs::remove_file(&policy_path);
     let _ = fs::remove_file(&file_path);
@@ -374,7 +374,7 @@ fn write_returns_ask_for_ask_rule() {
 
     let result = fence.write(&file_path, "should not be written");
 
-    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask(_))));
 
     assert!(!file_path.exists());
 
@@ -491,7 +491,7 @@ fn delete_returns_ask_for_ask_rule() {
     let fence = Fence::load(&policy_path).unwrap();
     let result = fence.delete(&file_path);
 
-    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask(_))));
     assert!(file_path.exists());
 
     fs::remove_file(policy_path).unwrap();
@@ -589,7 +589,7 @@ fn execute_returns_ask_for_ask_rule() {
 
     let result = fence.execute("echo", ["hello"], ".");
 
-    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask(_))));
 
     fs::remove_file(policy_path).unwrap();
 }
@@ -687,7 +687,7 @@ fn connect_returns_ask_for_ask_rule() {
 
     let result = fence.connect("127.0.0.1", 12345);
 
-    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask(_))));
 
     fs::remove_file(policy_path).unwrap();
 }

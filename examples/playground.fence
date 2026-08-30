@@ -1,12 +1,12 @@
 [filesystem]
-allow read ./examples/playground/*
-allow write ./examples/playground/*
-allow delete ./examples/playground/*
+allow read ./playground/*
+ask write ./playground/*
+deny delete ./playground/*
 
 [process]
 allow command cargo
 allow command rustc
-allow scope ./examples/playground/*
+allow scope ./playground/*
 
 [network]
 allow host api.github.com
