@@ -523,3 +523,96 @@ fn delete_returns_io_error_when_file_does_not_exist() {
 
     fs::remove_file(policy_path).unwrap();
 }
+
+#[test]
+fn execute_allows_allowed_command() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [process]
+        allow command echo
+        allow scope .
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let output = fence.execute("echo", ["hello"], ".").unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn execute_denies_unknown_command() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [process]
+        allow command echo
+        allow scope .
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.execute("sh", Vec::<&str>::new(), ".");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn execute_returns_ask_for_ask_rule() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [process]
+        ask command echo
+        allow scope .
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.execute("echo", ["hello"], ".");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn execute_denies_command_outside_scope() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [process]
+        allow command echo
+        allow scope ./allowed/**
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.execute("echo", ["hello"], "./");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}

@@ -35,10 +35,10 @@ impl Fence {
     }
 
     pub fn read(&self, path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, FenceOperationError> {
-        let request = FenceRequest::filesystem(
-            Operation::Read,
-            resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?,
-        );
+        let request_path =
+            resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?;
+
+        let request = FenceRequest::filesystem(Operation::Read, request_path);
 
         match self.check(&request) {
             Decision::Allow => std::fs::read(path).map_err(FenceOperationError::Io),
@@ -52,7 +52,10 @@ impl Fence {
         path: impl AsRef<std::path::Path>,
         content: impl AsRef<[u8]>,
     ) -> Result<(), FenceOperationError> {
-        let request = FenceRequest::filesystem(Operation::Write, path.as_ref());
+        let request_path =
+            resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?;
+
+        let request = FenceRequest::filesystem(Operation::Write, request_path);
 
         match self.check(&request) {
             Decision::Allow => std::fs::write(path, content).map_err(FenceOperationError::Io),
@@ -62,10 +65,43 @@ impl Fence {
     }
 
     pub fn delete(&self, path: impl AsRef<std::path::Path>) -> Result<(), FenceOperationError> {
-        let request = FenceRequest::filesystem(Operation::Delete, path.as_ref());
+        let request_path =
+            resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?;
+
+        let request = FenceRequest::filesystem(Operation::Delete, request_path);
 
         match self.check(&request) {
             Decision::Allow => std::fs::remove_file(path).map_err(FenceOperationError::Io),
+            Decision::Ask => Err(FenceOperationError::Ask),
+            Decision::Deny => Err(FenceOperationError::Denied),
+        }
+    }
+
+    pub fn execute<I, S>(
+        &self,
+        command: impl Into<String>,
+        args: I,
+        cwd: impl AsRef<std::path::Path>,
+    ) -> Result<std::process::Output, FenceOperationError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let command = command.into();
+        let args: Vec<String> = args.into_iter().map(Into::into).collect();
+
+        let request_cwd =
+            resolve_runtime_path(cwd.as_ref(), &self.root).map_err(FenceOperationError::Io)?;
+
+        let request = FenceRequest::process(&command, args.clone(), request_cwd);
+
+        match self.check(&request) {
+            Decision::Allow => std::process::Command::new(&command)
+                .args(&args)
+                .current_dir(cwd)
+                .output()
+                .map_err(FenceOperationError::Io),
+
             Decision::Ask => Err(FenceOperationError::Ask),
             Decision::Deny => Err(FenceOperationError::Denied),
         }
