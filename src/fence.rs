@@ -106,6 +106,24 @@ impl Fence {
             Decision::Deny => Err(FenceOperationError::Denied),
         }
     }
+
+    pub fn connect(
+        &self,
+        host: impl Into<String>,
+        port: u16,
+    ) -> Result<std::net::TcpStream, FenceOperationError> {
+        let host = host.into();
+
+        let request = FenceRequest::network(&host, port);
+
+        match self.check(&request) {
+            Decision::Allow => {
+                std::net::TcpStream::connect((host.as_str(), port)).map_err(FenceOperationError::Io)
+            }
+            Decision::Ask => Err(FenceOperationError::Ask),
+            Decision::Deny => Err(FenceOperationError::Denied),
+        }
+    }
 }
 
 #[derive(Debug)]

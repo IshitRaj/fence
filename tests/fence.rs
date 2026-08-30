@@ -616,3 +616,123 @@ fn execute_denies_command_outside_scope() {
 
     fs::remove_file(policy_path).unwrap();
 }
+
+#[test]
+fn connect_allows_allowed_host() {
+    use std::net::TcpListener;
+    use std::thread;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let handle = thread::spawn(move || {
+        listener.accept().unwrap();
+    });
+
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        allow host 127.0.0.1
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    fence.connect("127.0.0.1", port).unwrap();
+
+    handle.join().unwrap();
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn connect_denies_denied_host() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        deny host *
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.connect("127.0.0.1", 1);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn connect_returns_ask_for_ask_rule() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        ask host 127.0.0.1
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.connect("127.0.0.1", 12345);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn connect_deny_overrides_allow() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        allow host 127.0.0.1
+        deny host *
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.connect("127.0.0.1", 12345);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn connect_unknown_host_is_denied() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        allow host api.github.com
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.connect("example.com", 443);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}

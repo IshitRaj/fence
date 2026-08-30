@@ -2,7 +2,7 @@
 
 Fence is a policy-based security layer for controlling filesystem, process, and network access.
 
-Policies are written in `.fence` files:
+Policies are written in `.fence` files.
 
 ```toml
 [filesystem]
@@ -19,25 +19,26 @@ allow host api.github.com
 deny host *
 ```
 
-## Status
+Fence supports:
 
-* Filesystem — Available
-* Process — In development
-* Network — In development
-
-Filesystem currently supports `read`, `write`, and `delete` through the `Fence` API.
+* Filesystem: `read`, `write`, `delete`
+* Process: `command`, `scope`
+* Network: `host`
+* `allow`, `ask`, and `deny` rules
+* Relative, absolute, and `~` paths
+* `*` and `**` path patterns
 
 ## Playground
 
-A small runnable example is available in `examples/` for experimenting with a real `.fence` policy.
+A small runnable example is provided in `examples/` to experiment with a real `.fence` policy and the Fence API.
+
+Run it with:
 
 ```bash
 cargo run --example playground
 ```
 
-It demonstrates reading, writing, and deleting a file using relative paths.
-
-The test file is deleted at the end of the run, so create it again before running the example again.
+The playground demonstrates reading, writing, and deleting a file. The test file is deleted at the end, so it must be created again before another run.
 
 ## Development
 
@@ -46,4 +47,4 @@ cargo check
 cargo test
 ```
 
-Fence is currently in development and is not yet a complete sandbox.
+Fence is currently under development and is not yet a complete sandbox.
