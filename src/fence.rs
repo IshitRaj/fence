@@ -1,4 +1,5 @@
 use crate::engine::{Decision, FenceRequest, Operation};
+use crate::policy::path::resolve_runtime_path;
 use crate::policy::{ParseError, Policy, parse};
 
 #[derive(Debug)]
@@ -10,22 +11,34 @@ pub enum FenceOperationError {
 
 pub struct Fence {
     policy: Policy,
+    root: std::path::PathBuf,
 }
 
 impl Fence {
     pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, FenceError> {
+        let path = path.as_ref();
+
         let contents = std::fs::read_to_string(path).map_err(FenceError::Io)?;
         let policy = parse(&contents).map_err(FenceError::Parse)?;
 
-        Ok(Self { policy })
+        let root = path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .canonicalize()
+            .map_err(FenceError::Io)?;
+
+        Ok(Self { policy, root })
     }
 
     pub fn check(&self, request: &FenceRequest) -> Decision {
-        self.policy.evaluate(request)
+        self.policy.evaluate(request, &self.root)
     }
 
     pub fn read(&self, path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, FenceOperationError> {
-        let request = FenceRequest::filesystem(Operation::Read, path.as_ref());
+        let request = FenceRequest::filesystem(
+            Operation::Read,
+            resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?,
+        );
 
         match self.check(&request) {
             Decision::Allow => std::fs::read(path).map_err(FenceOperationError::Io),

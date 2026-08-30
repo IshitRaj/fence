@@ -1,5 +1,7 @@
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use fence::engine::{Decision, FenceRequest, Operation};
     use fence::policy::Policy;
     use fence::policy::model::{
@@ -26,7 +28,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Read, "/home/user/project/file.txt");
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -35,7 +37,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Read, "/etc/passwd");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -59,7 +61,7 @@ mod tests {
             format!("{home}/projects/myapp/src/main.rs"),
         );
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -78,7 +80,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Write, "/tmp/test.txt");
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -101,7 +103,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Read, "/tmp/secret/password.txt");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -124,7 +126,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Read, "/tmp/important/file.txt");
 
-        assert_eq!(policy.evaluate(&request), Decision::Ask);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Ask);
     }
 
     #[test]
@@ -143,7 +145,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Delete, "/tmp/test.txt");
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -157,7 +159,7 @@ mod tests {
 
         let request = FenceRequest::filesystem(Operation::Write, "/anything/at/all.txt");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -173,7 +175,7 @@ mod tests {
 
         let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -189,7 +191,7 @@ mod tests {
 
         let request = FenceRequest::process("python", ["script.py"], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -205,7 +207,7 @@ mod tests {
 
         let request = FenceRequest::process("bash", [""], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -221,7 +223,7 @@ mod tests {
 
         let request = FenceRequest::process("rm", ["file.txt"], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Ask);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Ask);
     }
 
     #[test]
@@ -237,7 +239,7 @@ mod tests {
 
         let request = FenceRequest::process("cargo", ["test"], "/tmp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -254,7 +256,7 @@ mod tests {
 
         let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -271,7 +273,7 @@ mod tests {
 
         let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Ask);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Ask);
     }
 
     #[test]
@@ -286,7 +288,7 @@ mod tests {
 
         let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -301,7 +303,7 @@ mod tests {
 
         let request = FenceRequest::network("api.github.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -316,7 +318,7 @@ mod tests {
 
         let request = FenceRequest::network("example.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -331,7 +333,7 @@ mod tests {
 
         let request = FenceRequest::network("api.crates.io", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Allow);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Allow);
     }
 
     #[test]
@@ -346,7 +348,7 @@ mod tests {
 
         let request = FenceRequest::network("crates.io", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -361,7 +363,7 @@ mod tests {
 
         let request = FenceRequest::network("evil.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -377,7 +379,7 @@ mod tests {
 
         let request = FenceRequest::network("api.example.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -393,7 +395,7 @@ mod tests {
 
         let request = FenceRequest::network("api.example.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Ask);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Ask);
     }
 
     #[test]
@@ -408,7 +410,7 @@ mod tests {
 
         let request = FenceRequest::network("example.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -424,7 +426,7 @@ mod tests {
 
         let request = FenceRequest::network("api.github.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 
     #[test]
@@ -436,6 +438,6 @@ mod tests {
 
         let request = FenceRequest::network("example.com", 443);
 
-        assert_eq!(policy.evaluate(&request), Decision::Deny);
+        assert_eq!(policy.evaluate(&request, Path::new("/")), Decision::Deny);
     }
 }

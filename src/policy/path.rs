@@ -1,6 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-/// Replace a leading `~` with $HOME. Leaves everything else untouched.
+/// Replace a leading `~` with `$HOME`.
 pub fn expand_home(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
     let path = path.as_ref();
 
@@ -12,14 +12,16 @@ pub fn expand_home(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
     })?;
 
     if path == Path::new("~") {
-        return Ok(PathBuf::from(home)); // bare "~"
+        return Ok(PathBuf::from(home));
     }
 
-    if let Ok(stripped) = path.strip_prefix("~") {
-        return Ok(PathBuf::from(home).join(stripped)); // "~/foo" -> "$HOME/foo"
+    let path_str = path.to_string_lossy();
+
+    if let Some(stripped) = path_str.strip_prefix("~/") {
+        return Ok(PathBuf::from(home).join(stripped));
     }
 
-    Ok(path.to_path_buf()) // no leading "~", nothing to do
+    Ok(path.to_path_buf())
 }
 
 /// Lexically resolve "." and "..", pure component math, no disk access,
@@ -33,7 +35,9 @@ pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
             Component::CurDir => {} // "." -> drop
 
             Component::ParentDir => {
-                normalized.pop(); // ".." -> remove the last thing we pushed
+                if normalized.file_name().is_some() {
+                    normalized.pop();
+                }
             }
 
             Component::RootDir => {
@@ -53,36 +57,55 @@ pub fn normalize_path(path: impl AsRef<Path>) -> PathBuf {
     normalized
 }
 
-/// Real, on-disk-style path -> absolute, fully normalized.
-/// expand "~" -> make absolute against cwd if relative -> resolve "."/"..".
-pub fn normalize_runtime_path(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+/// Resolve a runtime path against a base directory.
+///
+/// Absolute paths remain absolute.
+/// Relative paths are resolved against `base`.
+/// `~` is resolved against `$HOME`.
+pub fn resolve_runtime_path(
+    path: impl AsRef<Path>,
+    base: impl AsRef<Path>,
+) -> std::io::Result<PathBuf> {
     let expanded = expand_home(path)?;
 
     let absolute = if expanded.is_absolute() {
         expanded
     } else {
-        std::env::current_dir()?.join(expanded)
+        base.as_ref().join(expanded)
     };
 
     Ok(normalize_path(absolute))
 }
 
-/// Same job as normalize_path, but for GLOB PATTERN strings, not Path.
-/// "*"/"**" aren't real path syntax -- std::path would just treat them as
-/// ordinary Component::Normal segments, so this walks the string manually.
-pub fn normalize_pattern(pattern: &str) -> std::io::Result<String> {
+/// Resolve a runtime path against the current working directory.
+pub fn normalize_runtime_path(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    resolve_runtime_path(path, cwd)
+}
+
+/// Normalize a glob pattern against a base directory.
+///
+/// Relative patterns are resolved against `base`.
+/// Absolute patterns remain absolute.
+/// `~` is resolved against `$HOME`.
+pub fn normalize_pattern(pattern: &str, base: impl AsRef<Path>) -> std::io::Result<String> {
     let expanded = expand_home(pattern)?;
-    let expanded = expanded.to_string_lossy();
+
+    let absolute = if expanded.is_absolute() {
+        expanded
+    } else {
+        base.as_ref().join(expanded)
+    };
+
+    let expanded = absolute.to_string_lossy();
 
     let mut result = Vec::new();
 
     for component in expanded.split('/') {
         match component {
-            "" | "." => {} // "" comes from things like "/a//b"; drop with "."
+            "" | "." => {}
 
             ".." => {
-                // Pop the previous segment, UNLESS it's "**" -- you can't
-                // cancel a variable-depth wildcard with a literal "..".
                 if let Some(last) = result.last()
                     && *last != "**"
                 {
@@ -91,7 +114,7 @@ pub fn normalize_pattern(pattern: &str) -> std::io::Result<String> {
             }
 
             "*" | "**" => {
-                result.push(component); // wildcards pass through as-is
+                result.push(component);
             }
 
             component => {
@@ -100,7 +123,7 @@ pub fn normalize_pattern(pattern: &str) -> std::io::Result<String> {
         }
     }
 
-    Ok(format!("/{}", result.join("/"))) // re-anchored as absolute
+    Ok(format!("/{}", result.join("/")))
 }
 
 #[cfg(test)]
@@ -136,17 +159,47 @@ mod tests {
     }
 
     #[test]
-    fn expands_home_in_pattern() {
-        let result = normalize_pattern("~/projects/**").unwrap();
-
+    fn expands_home() {
+        let result = expand_home("~/projects/file.txt").unwrap();
         let home = std::env::var("HOME").unwrap();
 
-        assert_eq!(result, format!("{home}/projects/**"));
+        assert_eq!(result, PathBuf::from(home).join("projects/file.txt"));
     }
 
     #[test]
-    fn normalizes_pattern_parent_directory() {
-        let result = normalize_pattern("/home/user/projects/../other/**").unwrap();
+    fn relative_path_uses_base() {
+        let result = resolve_runtime_path("./playground/test.txt", "/home/user/project").unwrap();
+
+        assert_eq!(
+            result,
+            PathBuf::from("/home/user/project/playground/test.txt")
+        );
+    }
+
+    #[test]
+    fn absolute_path_ignores_base() {
+        let result = resolve_runtime_path("/playground/test.txt", "/home/user/project").unwrap();
+
+        assert_eq!(result, PathBuf::from("/playground/test.txt"));
+    }
+
+    #[test]
+    fn relative_pattern_uses_base() {
+        let result = normalize_pattern("./playground/**", "/home/user/project").unwrap();
+
+        assert_eq!(result, "/home/user/project/playground/**");
+    }
+
+    #[test]
+    fn absolute_pattern_ignores_base() {
+        let result = normalize_pattern("/playground/**", "/home/user/project").unwrap();
+
+        assert_eq!(result, "/playground/**");
+    }
+
+    #[test]
+    fn pattern_parent_directory_is_normalized() {
+        let result = normalize_pattern("/home/user/projects/../other/**", "/ignored").unwrap();
 
         assert_eq!(result, "/home/user/other/**");
     }

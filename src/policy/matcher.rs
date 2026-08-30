@@ -1,20 +1,30 @@
 use super::{
     model::{HostPattern, PathPattern},
-    path::{normalize_pattern, normalize_runtime_path},
+    path::{normalize_pattern, resolve_runtime_path},
 };
-
 use std::path::Path;
 
 impl PathPattern {
-    /// Public entry point: does `path` satisfy this pattern?
+    /// Match using the current working directory as the base
+    /// for relative paths.
     pub fn matches(&self, path: &Path) -> bool {
-        // Normalize the pattern string (handles "~", ".", "..", keeps "*"/"**")
-        let Ok(pattern) = normalize_pattern(&self.0) else {
-            return false; // couldn't normalize -> fail closed, no match
+        let Ok(base) = std::env::current_dir() else {
+            return false;
         };
 
-        // Normalize the actual path the same way, so both sides line up
-        let Ok(path) = normalize_runtime_path(path) else {
+        self.matches_from(path, &base)
+    }
+
+    /// Match using an explicit base directory.
+    ///
+    /// Relative patterns and relative paths are both resolved
+    /// against `base`.
+    pub fn matches_from(&self, path: &Path, base: &Path) -> bool {
+        let Ok(pattern) = normalize_pattern(&self.0, base) else {
+            return false;
+        };
+
+        let Ok(path) = resolve_runtime_path(path, base) else {
             return false;
         };
 
@@ -28,9 +38,8 @@ impl HostPattern {
     }
 }
 
-/// Split both sides on '/' and hand off to the recursive matcher.
 fn match_path(pattern: &str, path: &Path) -> bool {
-    let path = path.to_string_lossy(); // Path -> Cow<str> (lossy only bites on invalid UTF-8)
+    let path = path.to_string_lossy();
 
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     let path_parts: Vec<&str> = path.split('/').collect();
@@ -54,6 +63,7 @@ fn match_parts(pattern: &[&str], path: &[&str]) -> bool {
         if !path.is_empty() {
             return match_parts(pattern, &path[1..]);
         }
+
         return false;
     }
 
@@ -71,11 +81,7 @@ fn match_parts(pattern: &[&str], path: &[&str]) -> bool {
 
 /// Single-segment comparison: "*" matches anything, everything else is literal.
 fn component_matches(pattern: &str, value: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-
-    pattern == value
+    pattern == "*" || pattern == value
 }
 
 pub fn host_matches(pattern: &str, host: &str) -> bool {
@@ -114,6 +120,7 @@ mod tests {
         let pattern = PathPattern("/home/user/projects/*".into());
 
         assert!(pattern.matches(Path::new("/home/user/projects/app")));
+
         assert!(!pattern.matches(Path::new("/home/user/projects/app/src")));
     }
 
@@ -122,6 +129,7 @@ mod tests {
         let pattern = PathPattern("/home/user/projects/**".into());
 
         assert!(pattern.matches(Path::new("/home/user/projects/app")));
+
         assert!(pattern.matches(Path::new("/home/user/projects/app/src/main.rs")));
     }
 
@@ -133,32 +141,74 @@ mod tests {
     }
 
     #[test]
+    fn relative_pattern_matches_from_base() {
+        let pattern = PathPattern("./playground/**".into());
+        let base = Path::new("/home/user/project");
+
+        assert!(pattern.matches_from(Path::new("./playground/test.txt"), base,));
+    }
+
+    #[test]
+    fn relative_pattern_without_dot_matches_from_base() {
+        let pattern = PathPattern("playground/**".into());
+        let base = Path::new("/home/user/project");
+
+        assert!(pattern.matches_from(Path::new("playground/test.txt"), base,));
+    }
+
+    #[test]
+    fn absolute_pattern_does_not_use_base() {
+        let pattern = PathPattern("/playground/**".into());
+        let base = Path::new("/home/user/project");
+
+        assert!(pattern.matches_from(Path::new("/playground/test.txt"), base,));
+
+        assert!(!pattern.matches_from(Path::new("/home/user/project/playground/test.txt"), base,));
+    }
+
+    #[test]
     fn home_pattern_matches_runtime_path() {
         let pattern = PathPattern("~/projects/**".into());
-
         let home = std::env::var("HOME").unwrap();
 
-        let path = std::path::PathBuf::from(&home)
+        let path = Path::new(&home)
             .join("projects")
             .join("myapp")
             .join("src")
             .join("main.rs");
 
-        assert!(pattern.matches(&path));
+        assert!(pattern.matches_from(&path, Path::new("/some/other/base"),));
     }
 
     #[test]
     fn traversal_is_normalized_before_matching() {
         let pattern = PathPattern("~/projects/**".into());
-
         let home = std::env::var("HOME").unwrap();
 
-        let path = std::path::PathBuf::from(&home)
+        let path = Path::new(&home)
             .join("projects")
             .join("app")
             .join("..")
             .join("secret.txt");
 
         assert!(pattern.matches(&path));
+    }
+
+    #[test]
+    fn host_wildcard_matches_everything() {
+        assert!(host_matches("*", "example.com"));
+    }
+
+    #[test]
+    fn host_subdomain_wildcard_matches_subdomains() {
+        assert!(host_matches("*.example.com", "api.example.com"));
+        assert!(host_matches("*.example.com", "foo.example.com"));
+        assert!(!host_matches("*.example.com", "example.com"));
+    }
+
+    #[test]
+    fn exact_host_matches() {
+        assert!(host_matches("example.com", "example.com"));
+        assert!(!host_matches("example.com", "api.example.com"));
     }
 }

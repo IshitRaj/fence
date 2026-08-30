@@ -1,22 +1,24 @@
-use super::model::Policy;
+use super::model::{HostPattern, PathPattern, Policy};
 use crate::engine::{Decision, FenceRequest, Operation, Resource, Target};
+use std::path::Path;
 
 impl Policy {
     fn evaluate_path(
-        path: &std::path::Path,
-        deny: &[super::model::PathPattern],
-        ask: &[super::model::PathPattern],
-        allow: &[super::model::PathPattern],
+        path: &Path,
+        base: &Path,
+        deny: &[PathPattern],
+        ask: &[PathPattern],
+        allow: &[PathPattern],
     ) -> Decision {
-        if deny.iter().any(|pattern| pattern.matches(path)) {
+        if deny.iter().any(|pattern| pattern.matches_from(path, base)) {
             return Decision::Deny;
         }
 
-        if ask.iter().any(|pattern| pattern.matches(path)) {
+        if ask.iter().any(|pattern| pattern.matches_from(path, base)) {
             return Decision::Ask;
         }
 
-        if allow.iter().any(|pattern| pattern.matches(path)) {
+        if allow.iter().any(|pattern| pattern.matches_from(path, base)) {
             return Decision::Allow;
         }
 
@@ -25,9 +27,9 @@ impl Policy {
 
     fn evaluate_host(
         host: &str,
-        deny: &[super::model::HostPattern],
-        ask: &[super::model::HostPattern],
-        allow: &[super::model::HostPattern],
+        deny: &[HostPattern],
+        ask: &[HostPattern],
+        allow: &[HostPattern],
     ) -> Decision {
         if deny.iter().any(|pattern| pattern.matches(host)) {
             return Decision::Deny;
@@ -44,10 +46,11 @@ impl Policy {
         Decision::Deny
     }
 
-    pub fn evaluate(&self, request: &FenceRequest) -> Decision {
+    pub fn evaluate(&self, request: &FenceRequest, base: &Path) -> Decision {
         match (&request.resource, &request.operation, &request.target) {
             (Resource::Filesystem, Operation::Read, Target::Path(path)) => Self::evaluate_path(
                 path,
+                base,
                 &self.filesystem.deny.read,
                 &self.filesystem.ask.read,
                 &self.filesystem.allow.read,
@@ -55,6 +58,7 @@ impl Policy {
 
             (Resource::Filesystem, Operation::Write, Target::Path(path)) => Self::evaluate_path(
                 path,
+                base,
                 &self.filesystem.deny.write,
                 &self.filesystem.ask.write,
                 &self.filesystem.allow.write,
@@ -62,6 +66,7 @@ impl Policy {
 
             (Resource::Filesystem, Operation::Delete, Target::Path(path)) => Self::evaluate_path(
                 path,
+                base,
                 &self.filesystem.deny.delete,
                 &self.filesystem.ask.delete,
                 &self.filesystem.allow.delete,
@@ -76,7 +81,12 @@ impl Policy {
                     cwd,
                 },
             ) => {
-                if !self.process.scope.iter().any(|scope| scope.matches(cwd)) {
+                if !self
+                    .process
+                    .scope
+                    .iter()
+                    .any(|scope| scope.matches_from(cwd, base))
+                {
                     return Decision::Deny;
                 }
 
