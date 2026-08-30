@@ -1,5 +1,5 @@
 use super::{
-    model::PathPattern,
+    model::{HostPattern, PathPattern},
     path::{normalize_pattern, normalize_runtime_path},
 };
 
@@ -19,6 +19,12 @@ impl PathPattern {
         };
 
         match_path(&pattern, &path)
+    }
+}
+
+impl HostPattern {
+    pub fn matches(&self, host: &str) -> bool {
+        host_matches(&self.0, host)
     }
 }
 
@@ -70,6 +76,18 @@ fn component_matches(pattern: &str, value: &str) -> bool {
     }
 
     pattern == value
+}
+
+pub fn host_matches(pattern: &str, host: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+
+    if let Some(suffix) = pattern.strip_prefix("*.") {
+        return host.ends_with(&format!(".{suffix}"));
+    }
+
+    pattern == host
 }
 
 #[cfg(test)]

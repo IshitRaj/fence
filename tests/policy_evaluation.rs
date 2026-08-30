@@ -3,7 +3,7 @@ mod tests {
     use fence::engine::{Decision, FenceRequest, Operation};
     use fence::policy::Policy;
     use fence::policy::model::{
-        FilesystemPolicy, FilesystemRules, NetworkPolicy, PathPattern, ProcessPolicy,
+        FilesystemPolicy, FilesystemRules, HostPattern, NetworkPolicy, PathPattern, ProcessPolicy,
     };
 
     fn test_policy() -> Policy {
@@ -285,6 +285,156 @@ mod tests {
         };
 
         let request = FenceRequest::process("cargo", ["test"], "/projects/myapp");
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn allowed_host_returns_allow() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("api.github.com".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("api.github.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Allow);
+    }
+
+    #[test]
+    fn unknown_host_returns_deny() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("api.github.com".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("example.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn wildcard_host_returns_allow() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("*.crates.io".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("api.crates.io", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Allow);
+    }
+
+    #[test]
+    fn wildcard_host_does_not_match_parent_domain() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("*.crates.io".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("crates.io", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn denied_host_returns_deny() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                deny: vec![HostPattern("evil.com".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("evil.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn deny_overrides_allow_for_host() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("*.example.com".into())],
+                deny: vec![HostPattern("api.example.com".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("api.example.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn ask_overrides_allow_for_host() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("*.example.com".into())],
+                ask: vec![HostPattern("api.example.com".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("api.example.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Ask);
+    }
+
+    #[test]
+    fn global_wildcard_deny_returns_deny() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                deny: vec![HostPattern("*".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("example.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn allowed_host_overrides_global_deny() {
+        let policy = Policy {
+            network: NetworkPolicy {
+                allow: vec![HostPattern("api.github.com".into())],
+                deny: vec![HostPattern("*".into())],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("api.github.com", 443);
+
+        assert_eq!(policy.evaluate(&request), Decision::Deny);
+    }
+
+    #[test]
+    fn empty_network_policy_fails_closed_to_deny() {
+        let policy = Policy {
+            network: NetworkPolicy::default(),
+            ..Default::default()
+        };
+
+        let request = FenceRequest::network("example.com", 443);
 
         assert_eq!(policy.evaluate(&request), Decision::Deny);
     }

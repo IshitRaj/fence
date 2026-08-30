@@ -23,6 +23,27 @@ impl Policy {
         Decision::Deny
     }
 
+    fn evaluate_host(
+        host: &str,
+        deny: &[super::model::HostPattern],
+        ask: &[super::model::HostPattern],
+        allow: &[super::model::HostPattern],
+    ) -> Decision {
+        if deny.iter().any(|pattern| pattern.matches(host)) {
+            return Decision::Deny;
+        }
+
+        if ask.iter().any(|pattern| pattern.matches(host)) {
+            return Decision::Ask;
+        }
+
+        if allow.iter().any(|pattern| pattern.matches(host)) {
+            return Decision::Allow;
+        }
+
+        Decision::Deny
+    }
+
     pub fn evaluate(&self, request: &FenceRequest) -> Decision {
         match (&request.resource, &request.operation, &request.target) {
             (Resource::Filesystem, Operation::Read, Target::Path(path)) => Self::evaluate_path(
@@ -72,6 +93,15 @@ impl Policy {
                 }
 
                 Decision::Deny
+            }
+
+            (Resource::Network, Operation::Connect, Target::Network { host, port: _ }) => {
+                Self::evaluate_host(
+                    host,
+                    &self.network.deny,
+                    &self.network.ask,
+                    &self.network.allow,
+                )
             }
 
             _ => Decision::Deny,
