@@ -1,3 +1,4 @@
+use crate::engine::{Decision, FenceRequest};
 use crate::policy::{ParseError, Policy, parse};
 
 pub struct Fence {
@@ -10,6 +11,10 @@ impl Fence {
         let policy = parse(&contents).map_err(FenceError::Parse)?;
 
         Ok(Self { policy })
+    }
+
+    pub fn check(&self, request: &FenceRequest) -> Decision {
+        self.policy.evaluate(request)
     }
 }
 

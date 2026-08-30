@@ -1,4 +1,5 @@
 use fence::Fence;
+use fence::engine::{Decision, FenceRequest, Operation};
 
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -100,6 +101,72 @@ fn reports_parse_error_line_and_message() {
         }
         _ => panic!("expected a parse error"),
     }
+
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn check_allows_allowed_request() {
+    let path = temp_policy_path();
+
+    fs::write(
+        &path,
+        r#"
+        [filesystem]
+        allow read /tmp/**
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&path).unwrap();
+
+    let request = FenceRequest::filesystem(Operation::Read, "/tmp/test.txt");
+
+    assert_eq!(fence.check(&request), Decision::Allow);
+
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn check_denies_unmatched_request() {
+    let path = temp_policy_path();
+
+    fs::write(
+        &path,
+        r#"
+        [filesystem]
+        allow read /tmp/**
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&path).unwrap();
+
+    let request = FenceRequest::filesystem(Operation::Read, "/etc/passwd");
+
+    assert_eq!(fence.check(&request), Decision::Deny);
+
+    fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn check_returns_ask() {
+    let path = temp_policy_path();
+
+    fs::write(
+        &path,
+        r#"
+        [filesystem]
+        ask read /tmp/important/**
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&path).unwrap();
+
+    let request = FenceRequest::filesystem(Operation::Read, "/tmp/important/data.txt");
+
+    assert_eq!(fence.check(&request), Decision::Ask);
 
     fs::remove_file(&path).unwrap();
 }
