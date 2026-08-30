@@ -1,16 +1,30 @@
-use fence::Fence;
 use fence::engine::{Decision, FenceRequest, Operation};
+use fence::{Fence, FenceOperationError};
 
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn temp_policy_path() -> std::path::PathBuf {
-    let id: u128 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "fence-policy-{}-{}-{}.fence",
+        std::process::id(),
+        n,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ))
+}
+
+fn unique_path(tag: &str) -> std::path::PathBuf {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-
-    std::env::temp_dir().join(format!("fence-test-{id}.fence"))
+    std::env::temp_dir().join(format!("fence-{tag}-{}-{n}-{nanos}", std::process::id()))
 }
 
 #[test]
@@ -169,4 +183,229 @@ fn check_returns_ask() {
     assert_eq!(fence.check(&request), Decision::Ask);
 
     fs::remove_file(&path).unwrap();
+}
+
+#[test]
+fn read_allows_allowed_path() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("read-allow-policy");
+    let file_path = unique_path("read-allow-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow read {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    // Write the target file directly, bypassing Fence, so this test
+    // only exercises the read path, not write.
+    fs::write(&file_path, b"hello from disk").unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let contents = fence.read(&file_path).unwrap();
+
+    assert_eq!(contents, b"hello from disk");
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn read_denies_disallowed_path() {
+    let policy_path = unique_path("read-deny-policy");
+    let file_path = unique_path("read-deny-target.txt");
+
+    // Policy only allows reads under an unrelated scope, so the
+    // target path should fall through to the default/deny behavior.
+    fs::write(
+        &policy_path,
+        r#"
+        [filesystem]
+        allow read /nonexistent-fence-scope/**
+        "#,
+    )
+    .unwrap();
+
+    fs::write(&file_path, b"should not be readable").unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.read(&file_path);
+
+    assert!(matches!(result, Err(FenceOperationError::Denied)));
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn read_returns_ask_for_ask_rule() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("read-ask-policy");
+    let file_path = unique_path("read-ask-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask read {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    fs::write(&file_path, b"needs confirmation").unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.read(&file_path);
+
+    assert!(matches!(result, Err(FenceOperationError::Ask)));
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn read_propagates_io_error_for_missing_file() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("read-missing-policy");
+    // Deliberately never created.
+    let file_path = unique_path("read-missing-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow read {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.read(&file_path);
+
+    assert!(matches!(result, Err(FenceOperationError::Io(_))));
+
+    let _ = fs::remove_file(&policy_path);
+}
+
+#[test]
+fn write_allows_allowed_path() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-write-test.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    fence.write(&file_path, "hello from fence").unwrap();
+    assert_eq!(fs::read_to_string(&file_path).unwrap(), "hello from fence");
+
+    fs::remove_file(policy_path).unwrap();
+    fs::remove_file(file_path).unwrap();
+}
+
+#[test]
+fn write_denies_disallowed_path() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-write-denied.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            deny write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+    let result = fence.write(&file_path, "should not be written");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+    assert!(!file_path.exists());
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn write_returns_ask_for_ask_rule() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+    let file_path = dir.join("fence-write-ask.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.write(&file_path, "should not be written");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Ask)));
+
+    assert!(!file_path.exists());
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn write_returns_io_error_when_parent_does_not_exist() {
+    let policy_path = temp_policy_path();
+    let dir = std::env::temp_dir();
+
+    let missing_dir = dir.join("fence-missing-parent");
+    let file_path = missing_dir.join("file.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path).unwrap();
+
+    let result = fence.write(&file_path, "hello");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Io(_))));
+
+    fs::remove_file(policy_path).unwrap();
 }
