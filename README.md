@@ -4,7 +4,7 @@ A zero-dependency policy engine for filesystem, process, and network access in R
 
 ## Status
 
-v0.0.1. Built as a 72-hour hackathon project. The allow/ask/deny model, the `.fence` file format, and the approval flow below are implemented and tested. Anything not mentioned in this README isn't built yet.
+v0.1.0. Built as a 72-hour hackathon project. The allow/ask/deny model, the `.fence` file format, and the approval flow are implemented and tested.
 
 ## Documentation
 
@@ -42,7 +42,7 @@ fn main() {
 
 ## Policy files (`.fence`)
 
-```toml
+```text
 [filesystem]
 allow read ./projects/**
 allow write ./playground/**
