@@ -38,6 +38,22 @@ fn main() {
         Ok(()) => println!("[delete] succeeded"),
         Err(err) => println!("[delete] {err}"),
     }
+
+    match fence.execute("echo", ["Hello from Fence!"], ".") {
+        Ok(output) => println!(
+            "[execute] succeeded -> {}",
+            String::from_utf8_lossy(&output.stdout).trim()
+        ),
+        Err(err) => println!("[execute] {err}"),
+    }
+
+    match fence.execute("rm", [file], ".") {
+        Ok(output) => println!(
+            "[execute rm] succeeded -> {}",
+            String::from_utf8_lossy(&output.stdout).trim()
+        ),
+        Err(err) => println!("[execute rm] {err}"),
+    }
 }
 
 /// Prompts in the terminal whenever a policy rule is marked `ask`.

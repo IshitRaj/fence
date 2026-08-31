@@ -6,7 +6,9 @@ deny delete ./playground/*
 [process]
 allow command cargo
 allow command rustc
-allow scope ./playground/*
+allow command echo
+ask command rm
+allow scope ./**
 
 [network]
 allow host api.github.com
