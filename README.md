@@ -98,7 +98,11 @@ match fence.write(path, content) {
 
 ## Errors
 
-`Fence::load` returns `FenceError`, either `Io` (couldn't read the policy file) or `Parse` (the `.fence` file didn't parse).
+`Fence::load` returns `FenceError`:
+
+* `InvalidPolicyFile` — the supplied path does not have a `.fence` extension.
+* `Io` — the policy file could not be read, or its parent directory could not be canonicalized.
+* `Parse` — the `.fence` file contents could not be parsed.
 
 Every guarded operation (`read`, `write`, `delete`, `execute`, `connect`) returns `FenceOperationError`, and `Fence::load` returns `FenceError`. Both implement `Display` and `std::error::Error`, so they compose with `?` in your own functions.
 ## Examples

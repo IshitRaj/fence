@@ -1,5 +1,5 @@
 use fence::engine::{Decision, FenceRequest, Operation};
-use fence::{Fence, FenceOperationError};
+use fence::{Fence, FenceError, FenceOperationError};
 
 use std::fs;
 
@@ -188,7 +188,7 @@ fn check_returns_ask() {
 #[test]
 fn read_allows_allowed_path() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("read-allow-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("read-allow-target.txt");
 
     fs::write(
@@ -218,7 +218,7 @@ fn read_allows_allowed_path() {
 
 #[test]
 fn read_denies_disallowed_path() {
-    let policy_path = unique_path("read-deny-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("read-deny-target.txt");
 
     // Policy only allows reads under an unrelated scope, so the
@@ -246,7 +246,7 @@ fn read_denies_disallowed_path() {
 #[test]
 fn read_returns_ask_for_ask_rule() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("read-ask-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("read-ask-target.txt");
 
     fs::write(
@@ -275,7 +275,7 @@ fn read_returns_ask_for_ask_rule() {
 #[test]
 fn read_propagates_io_error_for_missing_file() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("read-missing-policy");
+    let policy_path = temp_policy_path();
     // Deliberately never created.
     let file_path = unique_path("read-missing-target.txt");
 
@@ -740,7 +740,7 @@ fn connect_unknown_host_is_denied() {
 #[test]
 fn read_ask_approved_performs_read() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("read-ask-approved-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("read-ask-approved-target.txt");
 
     fs::write(
@@ -772,7 +772,7 @@ fn read_ask_approved_performs_read() {
 #[test]
 fn read_ask_denied_returns_denied() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("read-ask-denied-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("read-ask-denied-target.txt");
 
     fs::write(
@@ -804,7 +804,7 @@ fn read_ask_denied_returns_denied() {
 #[test]
 fn write_ask_approved_performs_write() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("write-ask-approved-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("write-ask-approved-target.txt");
 
     fs::write(
@@ -834,7 +834,7 @@ fn write_ask_approved_performs_write() {
 #[test]
 fn write_ask_denied_returns_denied() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("write-ask-denied-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("write-ask-denied-target.txt");
 
     fs::write(
@@ -864,7 +864,7 @@ fn write_ask_denied_returns_denied() {
 #[test]
 fn delete_ask_approved_performs_delete() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("delete-ask-approved-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("delete-ask-approved-target.txt");
 
     fs::write(
@@ -895,7 +895,7 @@ fn delete_ask_approved_performs_delete() {
 #[test]
 fn delete_ask_denied_returns_denied() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("delete-ask-denied-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("delete-ask-denied-target.txt");
 
     fs::write(
@@ -1031,7 +1031,7 @@ fn connect_ask_denied_returns_denied() {
 #[test]
 fn write_deny_rule_overrides_approving_handler() {
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("write-deny-overrides-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("write-deny-overrides-target.txt");
 
     fs::write(
@@ -1063,7 +1063,7 @@ fn write_allow_rule_never_invokes_handler() {
     static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
     let dir = std::env::temp_dir();
-    let policy_path = unique_path("write-allow-no-handler-policy");
+    let policy_path = temp_policy_path();
     let file_path = unique_path("write-allow-no-handler-target.txt");
 
     fs::write(
@@ -1092,4 +1092,28 @@ fn write_allow_rule_never_invokes_handler() {
 
     let _ = fs::remove_file(&policy_path);
     let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn rejects_non_fence_policy_file() {
+    let path = std::env::temp_dir().join("fence-invalid-policy.txt");
+
+    fs::write(&path, "[filesystem]\nallow read ./playground/**").unwrap();
+
+    let result = Fence::load(&path);
+
+    assert!(matches!(result, Err(FenceError::InvalidPolicyFile)));
+
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn accepts_fence_policy_file() {
+    let path = std::env::temp_dir().join("fence-valid-policy.fence");
+
+    fs::write(&path, "[filesystem]\nallow read ./playground/**").unwrap();
+
+    assert!(Fence::load(&path).is_ok());
+
+    fs::remove_file(path).unwrap();
 }

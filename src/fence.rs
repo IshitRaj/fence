@@ -46,6 +46,10 @@ impl Fence {
     pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, FenceError> {
         let path = path.as_ref();
 
+        if path.extension().and_then(|ext| ext.to_str()) != Some("fence") {
+            return Err(FenceError::InvalidPolicyFile);
+        }
+
         let contents = std::fs::read_to_string(path).map_err(FenceError::Io)?;
         let policy = parse(&contents).map_err(FenceError::Parse)?;
 
@@ -163,6 +167,7 @@ impl Fence {
 /// Errors produced while loading a Fence policy.
 #[derive(Debug)]
 pub enum FenceError {
+    InvalidPolicyFile,
     Io(std::io::Error),
     Parse(ParseError),
 }
@@ -170,6 +175,9 @@ pub enum FenceError {
 impl std::fmt::Display for FenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            FenceError::InvalidPolicyFile => {
+                write!(f, "policy file must have a `.fence` extension")
+            }
             FenceError::Io(err) => write!(f, "failed to read policy file: {err}"),
             FenceError::Parse(err) => write!(f, "invalid policy file: {err}"),
         }
@@ -181,6 +189,7 @@ impl std::error::Error for FenceError {
         match self {
             FenceError::Io(err) => Some(err),
             FenceError::Parse(err) => Some(err),
+            FenceError::InvalidPolicyFile => None,
         }
     }
 }

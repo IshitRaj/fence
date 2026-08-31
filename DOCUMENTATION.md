@@ -129,7 +129,11 @@ The practical implication: the security boundary comes entirely from how narrowl
 pub fn load(path: impl AsRef<Path>) -> Result<Self, FenceError>
 ```
 
-Reads and parses a `.fence` file at `path`. The parent directory of `path` is canonicalized and becomes the `Fence`'s root, the base every relative pattern in the policy and every relative path passed to `read`/`write`/`delete`/`execute` resolves against. Because it's canonicalized, that parent directory must actually exist on disk. Fails with `FenceError::Io` if the file can't be read or the parent can't be canonicalized, or `FenceError::Parse` if the contents don't parse.
+Reads and parses a `.fence` policy file at `path`. The path must have a `.fence` extension. The parent directory of `path` is canonicalized and becomes the `Fence`'s root, the base against which relative patterns in the policy and relative paths passed to `read`, `write`, `delete`, and `execute` are resolved.
+
+Because the parent directory is canonicalized, it must actually exist on disk.
+
+Returns `FenceError::InvalidPolicyFile` when the path does not have a `.fence` extension, `FenceError::Io` if the file cannot be read or its parent cannot be canonicalized, and `FenceError::Parse` if the policy contents cannot be parsed.
 
 ### `Fence::with_approval_handler`
 
@@ -248,7 +252,7 @@ pub enum FenceError {
 }
 ```
 
-Returned only by `Fence::load`. Implements `Display` and `std::error::Error`, exposing the wrapped `io::Error` or `ParseError` through `source()`, so it composes with `?` into `Box<dyn std::error::Error>`.
+Returned by `Fence::load`. Implements `Display` and `std::error::Error`. `Io` and `Parse` expose their underlying errors through `source()`, while `InvalidPolicyFile` indicates that the supplied path is not a `.fence` policy file.
 
 ### `FenceOperationError`
 
