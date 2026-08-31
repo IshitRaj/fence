@@ -203,17 +203,39 @@ There's a blanket implementation for any `Fn(&FenceRequest) -> ApprovalDecision 
 
 ### `FenceRequest`'s `Display` impl
 
-Defined in `approval.rs`, alongside `ApprovalHandler`, rather than next to `FenceRequest`'s own definition in `engine/request.rs`:
+Lives in `engine/request.rs`, next to the rest of the type's definition:
 
 ```rust
 impl std::fmt::Display for FenceRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} on {:?}", self.operation, self.target)
+        match (&self.operation, &self.target) {
+            (Operation::Read, Target::Path(path)) => write!(f, "read {}", path.display()),
+            (Operation::Write, Target::Path(path)) => write!(f, "write {}", path.display()),
+            (Operation::Delete, Target::Path(path)) => write!(f, "delete {}", path.display()),
+            (Operation::Execute, Target::Process { command, args, cwd }) => {
+                if args.is_empty() {
+                    write!(f, "run `{command}` in {}", cwd.display())
+                } else {
+                    write!(f, "run `{command} {}` in {}", args.join(" "), cwd.display())
+                }
+            }
+            (Operation::Connect, Target::Network { host, port }) => write!(f, "connect to {host}:{port}"),
+            _ => write!(f, "{:?} on {:?}", self.operation, self.target),
+        }
     }
 }
 ```
 
-It formats using each field's `Debug` output, so a request prints as e.g. `Read on Path("/home/user/project/playground/test.txt")` or `Execute on Process { command: "cargo", args: ["test"], cwd: "/home/user/project" }`. If you want friendlier prompt text, match on `request.operation`/`request.target` yourself inside your handler rather than relying on `{request}` directly.
+It formats per operation. For example, a request prints as
+`read /home/user/project/playground/test.txt`,
+``run `cargo test` in /home/user/project``, or
+`connect to 127.0.0.1:8080`.
+
+The final `_` arm is a fallback for a mismatched
+resource/operation/target combination. It is technically
+constructible since all of `FenceRequest`'s fields are public,
+though nothing in the crate builds one that way, so it isn't
+reachable in normal use.
 
 ## Errors
 

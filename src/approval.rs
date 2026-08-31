@@ -21,9 +21,3 @@ where
         self(request)
     }
 }
-
-impl std::fmt::Display for FenceRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} on {:?}", self.operation, self.target)
-    }
-}

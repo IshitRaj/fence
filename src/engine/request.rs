@@ -39,6 +39,27 @@ pub struct FenceRequest {
     pub target: Target,
 }
 
+impl std::fmt::Display for FenceRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.operation, &self.target) {
+            (Operation::Read, Target::Path(path)) => write!(f, "read {}", path.display()),
+            (Operation::Write, Target::Path(path)) => write!(f, "write {}", path.display()),
+            (Operation::Delete, Target::Path(path)) => write!(f, "delete {}", path.display()),
+            (Operation::Execute, Target::Process { command, args, cwd }) => {
+                if args.is_empty() {
+                    write!(f, "run `{command}` in {}", cwd.display())
+                } else {
+                    write!(f, "run `{command} {}` in {}", args.join(" "), cwd.display())
+                }
+            }
+            (Operation::Connect, Target::Network { host, port }) => {
+                write!(f, "connect to {host}:{port}")
+            }
+            _ => write!(f, "{:?} on {:?}", self.operation, self.target),
+        }
+    }
+}
+
 impl FenceRequest {
     pub fn filesystem(operation: Operation, path: impl Into<PathBuf>) -> Self {
         Self {

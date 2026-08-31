@@ -4,15 +4,15 @@ Fence currently uses the Rust standard library wherever possible.
 
 ## Used so far
 
-* `std::path::{Path, PathBuf}` — filesystem path handling.
+* `std::path::{Path, PathBuf, Component}` — filesystem path handling; `Component` specifically for lexically walking and resolving `.`/`..` segments in `normalize_path`.
 * `std::fs` — reading, writing, removing, and checking files (`read`, `write`, `read_to_string`, `remove_file`, `exists`) for the library's `read`/`write`/`delete` operations and test fixtures.
 * `std::process::{Command, Output}` — spawning and capturing the result of scoped commands in `execute`.
 * `std::net::TcpStream` — opening outbound connections in `connect`.
 * `std::io::Error` — underlying I/O failures, wrapped in `FenceOperationError::Io` / `FenceError::Io`.
-* `std::fmt::{Display, Formatter}` — human-readable messages for `FenceOperationError` and `FenceRequest`, so a denied or pending request prints something actionable instead of a raw Debug dump.
-* `std::error::Error` — implemented for `FenceOperationError`, so it composes with `?` and `Box<dyn Error>`, and exposes the wrapped `io::Error` through `source()`.
+* `std::fmt::{Display, Formatter}` — human-readable messages for `FenceOperationError`, `FenceError`, `ParseError`, and `FenceRequest`, so a denied, pending, or parse-failure error prints something actionable instead of a raw Debug dump.
+* `std::error::Error` — implemented for `FenceOperationError`, `FenceError`, and `ParseError`, so all three compose with `?` and `Box<dyn Error>`. `FenceOperationError` and `FenceError` expose their wrapped `io::Error`/`ParseError` through `source()`; `ParseError` has nothing to wrap, so it uses the default `None`.
 * `std::sync::Arc` — shared ownership of the optional `dyn ApprovalHandler` on `Fence`, so every operation call can consult the same handler without owning it.
-* `std::env` — environment variables such as `HOME`, and `temp_dir()` for locating the platform's temp directory (used in tests instead of hardcoding `/tmp`, since that path differs on macOS).
+* `std::env` — the `HOME` environment variable for `~` expansion, `current_dir()` for resolving a path or pattern when no explicit base is given (`PathPattern::matches`, `normalize_runtime_path`), and `temp_dir()` for locating the platform's temp directory in tests instead of hardcoding `/tmp`, since that path differs on macOS.
 * `Vec<T>` — storing policy rules.
 * `Result<T, E>` — parser, policy-check, and operation error handling.
 * `str` methods and iterators — parsing `.fence` input without a parsing dependency.
