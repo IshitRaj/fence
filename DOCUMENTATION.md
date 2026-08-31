@@ -247,6 +247,7 @@ reachable in normal use.
 
 ```rust
 pub enum FenceError {
+    InvalidPolicyFile,
     Io(std::io::Error),
     Parse(ParseError),
 }
