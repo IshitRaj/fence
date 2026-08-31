@@ -4,6 +4,7 @@ use crate::policy::path::resolve_runtime_path;
 use crate::policy::{ParseError, Policy, parse};
 use std::sync::Arc;
 
+/// Errors produced while performing a policy-controlled operation.
 #[derive(Debug)]
 pub enum FenceOperationError {
     Denied,
@@ -41,6 +42,7 @@ impl std::error::Error for FenceOperationError {
 }
 
 impl Fence {
+    /// Loads a Fence policy from a `.fence` file.
     pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, FenceError> {
         let path = path.as_ref();
 
@@ -60,15 +62,22 @@ impl Fence {
         })
     }
 
+    /// Registers the application callback used to resolve `ask` rules.
     pub fn with_approval_handler(mut self, handler: impl ApprovalHandler + 'static) -> Self {
         self.approval_handler = Some(Arc::new(handler));
         self
     }
 
+    /// Evaluates a request against the loaded policy.
     pub fn check(&self, request: &FenceRequest) -> Decision {
         self.policy.evaluate(request, &self.root)
     }
 
+    /// Authorizes a request using the policy and, when required, the approval handler.
+    ///
+    /// `Allow` permits the operation immediately. `Deny` rejects it immediately.
+    /// For `Ask`, the configured approval handler is consulted. If no handler is
+    /// configured, the request is returned as `FenceOperationError::Ask`.
     fn authorize(&self, request: &FenceRequest) -> Result<(), FenceOperationError> {
         match self.check(request) {
             Decision::Allow => Ok(()),
@@ -83,6 +92,7 @@ impl Fence {
         }
     }
 
+    /// Reads a file after policy authorization.
     pub fn read(&self, path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, FenceOperationError> {
         let request_path =
             resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?;
@@ -91,6 +101,7 @@ impl Fence {
         std::fs::read(&request_path).map_err(FenceOperationError::Io)
     }
 
+    /// Writes a file after policy authorization.
     pub fn write(
         &self,
         path: impl AsRef<std::path::Path>,
@@ -103,6 +114,7 @@ impl Fence {
         std::fs::write(&request_path, content).map_err(FenceOperationError::Io)
     }
 
+    /// Deletes a file after policy authorization.
     pub fn delete(&self, path: impl AsRef<std::path::Path>) -> Result<(), FenceOperationError> {
         let request_path =
             resolve_runtime_path(path.as_ref(), &self.root).map_err(FenceOperationError::Io)?;
@@ -111,6 +123,7 @@ impl Fence {
         std::fs::remove_file(&request_path).map_err(FenceOperationError::Io)
     }
 
+    /// Executes a process after policy authorization.
     pub fn execute<I, S>(
         &self,
         command: impl Into<String>,
@@ -134,6 +147,7 @@ impl Fence {
             .map_err(FenceOperationError::Io)
     }
 
+    /// Opens a TCP connection after policy authorization.
     pub fn connect(
         &self,
         host: impl Into<String>,
@@ -146,6 +160,7 @@ impl Fence {
     }
 }
 
+/// Errors produced while loading a Fence policy.
 #[derive(Debug)]
 pub enum FenceError {
     Io(std::io::Error),

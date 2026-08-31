@@ -1,11 +1,13 @@
 use crate::engine::FenceRequest;
 
+/// A decision returned by an approval handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApprovalDecision {
     Approved,
     Denied,
 }
 
+/// Handles requests that match an `ask` policy rule.
 pub trait ApprovalHandler: Send + Sync {
     fn approve(&self, request: &FenceRequest) -> ApprovalDecision;
 }
