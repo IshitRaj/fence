@@ -736,3 +736,360 @@ fn connect_unknown_host_is_denied() {
 
     fs::remove_file(policy_path).unwrap();
 }
+
+#[test]
+fn read_ask_approved_performs_read() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("read-ask-approved-policy");
+    let file_path = unique_path("read-ask-approved-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask read {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    fs::write(&file_path, b"needs confirmation").unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Approved);
+
+    let result = fence.read(&file_path);
+
+    assert_eq!(result.unwrap(), b"needs confirmation");
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn read_ask_denied_returns_denied() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("read-ask-denied-policy");
+    let file_path = unique_path("read-ask-denied-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask read {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    fs::write(&file_path, b"needs confirmation").unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Denied);
+
+    let result = fence.read(&file_path);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn write_ask_approved_performs_write() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("write-ask-approved-policy");
+    let file_path = unique_path("write-ask-approved-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Approved);
+
+    fence.write(&file_path, b"hello").unwrap();
+
+    assert_eq!(fs::read(&file_path).unwrap(), b"hello");
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn write_ask_denied_returns_denied() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("write-ask-denied-policy");
+    let file_path = unique_path("write-ask-denied-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Denied);
+
+    let result = fence.write(&file_path, b"hello");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+    assert!(!file_path.exists());
+
+    let _ = fs::remove_file(&policy_path);
+}
+
+#[test]
+fn delete_ask_approved_performs_delete() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("delete-ask-approved-policy");
+    let file_path = unique_path("delete-ask-approved-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask delete {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    fs::write(&file_path, b"soon gone").unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Approved);
+
+    fence.delete(&file_path).unwrap();
+
+    assert!(!file_path.exists());
+
+    let _ = fs::remove_file(&policy_path);
+}
+
+#[test]
+fn delete_ask_denied_returns_denied() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("delete-ask-denied-policy");
+    let file_path = unique_path("delete-ask-denied-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            ask delete {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    fs::write(&file_path, b"stays put").unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Denied);
+
+    let result = fence.delete(&file_path);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+    assert!(file_path.exists());
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
+
+#[test]
+fn execute_ask_approved_runs_command() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [process]
+        ask command echo
+        allow scope .
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Approved);
+
+    let output = fence.execute("echo", ["hello"], ".").unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn execute_ask_denied_returns_denied() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [process]
+        ask command echo
+        allow scope .
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Denied);
+
+    let result = fence.execute("echo", ["hello"], ".");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn connect_ask_approved_opens_connection() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        ask host 127.0.0.1
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Approved);
+
+    let result = fence.connect("127.0.0.1", port);
+
+    assert!(result.is_ok());
+
+    drop(listener);
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn connect_ask_denied_returns_denied() {
+    let policy_path = temp_policy_path();
+
+    fs::write(
+        &policy_path,
+        r#"
+        [network]
+        ask host 127.0.0.1
+        "#,
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Denied);
+
+    let result = fence.connect("127.0.0.1", 12345);
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+
+    fs::remove_file(policy_path).unwrap();
+}
+
+#[test]
+fn write_deny_rule_overrides_approving_handler() {
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("write-deny-overrides-policy");
+    let file_path = unique_path("write-deny-overrides-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            deny write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence = Fence::load(&policy_path)
+        .unwrap()
+        .with_approval_handler(|_: &fence::FenceRequest| fence::ApprovalDecision::Approved);
+
+    let result = fence.write(&file_path, b"hello");
+
+    assert!(matches!(result, Err(fence::FenceOperationError::Denied)));
+    assert!(!file_path.exists());
+
+    let _ = fs::remove_file(&policy_path);
+}
+
+#[test]
+fn write_allow_rule_never_invokes_handler() {
+    static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    let dir = std::env::temp_dir();
+    let policy_path = unique_path("write-allow-no-handler-policy");
+    let file_path = unique_path("write-allow-no-handler-target.txt");
+
+    fs::write(
+        &policy_path,
+        format!(
+            r#"
+            [filesystem]
+            allow write {}/**
+            "#,
+            dir.display()
+        ),
+    )
+    .unwrap();
+
+    let fence =
+        Fence::load(&policy_path)
+            .unwrap()
+            .with_approval_handler(|_: &fence::FenceRequest| {
+                CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                fence::ApprovalDecision::Approved
+            });
+
+    fence.write(&file_path, b"hello").unwrap();
+
+    assert_eq!(CALLS.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    let _ = fs::remove_file(&policy_path);
+    let _ = fs::remove_file(&file_path);
+}
