@@ -151,3 +151,21 @@ pub enum FenceError {
     Io(std::io::Error),
     Parse(ParseError),
 }
+
+impl std::fmt::Display for FenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FenceError::Io(err) => write!(f, "failed to read policy file: {err}"),
+            FenceError::Parse(err) => write!(f, "invalid policy file: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for FenceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            FenceError::Io(err) => Some(err),
+            FenceError::Parse(err) => Some(err),
+        }
+    }
+}

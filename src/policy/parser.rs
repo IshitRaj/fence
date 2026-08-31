@@ -21,6 +21,14 @@ impl ParseError {
     }
 }
 
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "line {}: {}", self.line, self.message)
+    }
+}
+
+impl std::error::Error for ParseError {}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Section {
     Filesystem,
