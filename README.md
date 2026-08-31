@@ -6,6 +6,10 @@ A zero-dependency policy engine for filesystem, process, and network access in R
 
 v0.0.1. Built as a 72-hour hackathon project. The allow/ask/deny model, the `.fence` file format, and the approval flow below are implemented and tested. Anything not mentioned in this README isn't built yet.
 
+## Documentation
+
+This README covers the core API, policy format, and current behavior. For a more detailed reference covering the public API, crate structure, parser, policy evaluation, path handling, and testing, see [`DOCUMENTATION.md`](DOCUMENTATION.md).
+
 ## What Fence does
 
 Fence sits between your application code and `std::fs`, `std::process`, and `std::net`. Every filesystem read, write, or delete, every spawned command, and every outbound connection you route through the `Fence` API is checked against a policy file before it runs. The policy decides whether the operation is allowed outright, denied outright, or requires an explicit approval at runtime.
@@ -116,4 +120,4 @@ cargo test
 
 Fence is a library-level enforcement API. It controls operations performed through the `Fence` API; it does not prevent an application from directly using `std::fs`, `std::process`, networking APIs, or other libraries to bypass Fence.
 
-Path authorization is currently based on normalized paths and patterns rather than OS-level sandboxing.
+Path authorization is currently based on normalized paths and patterns rather than OS-level sandboxing. Symlink resolution is not currently handled as a separate security boundary and may be addressed in a future version.
